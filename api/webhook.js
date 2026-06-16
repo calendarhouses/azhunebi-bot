@@ -1,10 +1,8 @@
 const { validateInitData, sendMessage, answerCallbackQuery } = require("../lib/telegram");
+const { handleOrderApi } = require("../lib/order-api");
 const {
-  createOrder,
-  notifyAdminNewOrder,
   handleOrderCallback,
   getUserOrders,
-  formatUserOrdersMessage,
 } = require("../lib/orders");
 
 const WELCOME_TEXT =
@@ -41,64 +39,36 @@ function isOrdersCommand(text) {
   return firstWord === "/orders" || firstWord.startsWith("/orders@");
 }
 
-async function handleOrder(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
+async function sendOrdersWebAppButton(chatId, webAppUrl) {
+  const normalizedUrl = webAppUrl.replace(/\/?$/, "/");
+  const ordersWebAppUrl = `${normalizedUrl}#orders`;
 
-  try {
-    const { initData, cart, comment, locationNote, paymentMethod, scheduledFor } =
-      req.body || {};
-    const user = validateInitData(initData);
-
-    if (!user) {
-      return res.status(401).json({ ok: false, error: "Invalid initData" });
-    }
-
-    const order = await createOrder({
-      user,
-      cartInput: cart,
-      comment,
-      locationNote,
-      paymentMethod,
-      scheduledFor,
-    });
-
-    await notifyAdminNewOrder(order);
-
-    return res.status(200).json({ ok: true, orderId: order.id, order: {
-      id: order.id,
-      status: order.status,
-      scheduledFor: order.scheduled_for,
-    }});
-  } catch (error) {
-    return res.status(400).json({
-      ok: false,
-      error: error instanceof Error ? error.message : "Order failed",
-    });
-  }
+  await sendMessage({
+    chat_id: chatId,
+    text: "📋 Статус замовлень дивіться у Web App — там stepper і оновлення в реальному часі.",
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "📋 Відкрити мої замовлення", web_app: { url: ordersWebAppUrl } }],
+      ],
+    },
+  });
 }
 
 async function handleCallbackQuery(callbackQuery) {
   const data = callbackQuery.data || "";
 
   if (data === "orders:list") {
-    try {
-      const orders = await getUserOrders(callbackQuery.from.id);
-      await sendMessage({
-        chat_id: callbackQuery.message?.chat?.id || callbackQuery.from.id,
-        text: formatUserOrdersMessage(orders),
-      });
-      await answerCallbackQuery({
-        callback_query_id: callbackQuery.id,
-      });
-    } catch (error) {
-      await answerCallbackQuery({
-        callback_query_id: callbackQuery.id,
-        text: "Не вдалося завантажити замовлення",
-        show_alert: true,
-      });
+    const webAppUrl = process.env.WEB_APP_URL;
+    if (webAppUrl) {
+      await sendOrdersWebAppButton(
+        callbackQuery.message?.chat?.id || callbackQuery.from.id,
+        webAppUrl
+      );
     }
+
+    await answerCallbackQuery({
+      callback_query_id: callbackQuery.id,
+    });
     return;
   }
 
@@ -147,9 +117,9 @@ async function handleWebhook(req, res) {
     }
 
     const text = update?.message?.text;
+    const webAppUrl = process.env.WEB_APP_URL;
 
     if (typeof text === "string" && isStartCommand(text)) {
-      const webAppUrl = process.env.WEB_APP_URL;
       if (!webAppUrl) {
         throw new Error("WEB_APP_URL is not set");
       }
@@ -159,11 +129,18 @@ async function handleWebhook(req, res) {
     }
 
     if (typeof text === "string" && isOrdersCommand(text)) {
-      const orders = await getUserOrders(update.message.from.id);
-      await sendMessage({
-        chat_id: update.message.chat.id,
-        text: formatUserOrdersMessage(orders),
-      });
+      if (webAppUrl) {
+        await sendOrdersWebAppButton(update.message.chat.id, webAppUrl);
+      } else {
+        const orders = await getUserOrders(update.message.from.id);
+        await sendMessage({
+          chat_id: update.message.chat.id,
+          text:
+            orders.length > 0
+              ? "📋 Є активні замовлення. Відкрийте меню через /start."
+              : "📋 Активних замовлень немає.",
+        });
+      }
     }
   } catch (error) {
     // Повертаємо 200, щоб Telegram не спамив ретраями
@@ -179,12 +156,18 @@ function getRequestPath(req) {
 module.exports = async (req, res) => {
   const path = getRequestPath(req);
 
-  if (path === "/api/order" || path.endsWith("/order")) {
-    return handleOrder(req, res);
+  if (
+    path === "/api/order" ||
+    path.endsWith("/order") ||
+    path === "/api/orders" ||
+    path.endsWith("/orders") ||
+    path === "/api/cron-prepare" ||
+    path.endsWith("/cron-prepare")
+  ) {
+    return handleOrderApi(req, res, path);
   }
 
   return handleWebhook(req, res);
 };
 
-module.exports.handleOrder = handleOrder;
 module.exports.handleWebhook = handleWebhook;
