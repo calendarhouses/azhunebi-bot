@@ -15,6 +15,9 @@
     },
     "api/cron-prepare.js": {
       "maxDuration": 10
+    },
+    "api/health.js": {
+      "maxDuration": 5
     }
   },
   "crons": [

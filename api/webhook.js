@@ -1,5 +1,5 @@
 const { validateInitData, sendMessage, answerCallbackQuery } = require("../lib/telegram");
-const { handleOrderApi } = require("../lib/order-api");
+const { handleOrderApi, parseBody } = require("../lib/order-api");
 const {
   handleOrderCallback,
   getUserOrders,
@@ -164,7 +164,16 @@ module.exports = async (req, res) => {
     path === "/api/cron-prepare" ||
     path.endsWith("/cron-prepare")
   ) {
+    req.body = parseBody(req);
     return handleOrderApi(req, res, path);
+  }
+
+  try {
+    if (typeof req.body === "string") {
+      req.body = parseBody(req);
+    }
+  } catch {
+    // ignore
   }
 
   return handleWebhook(req, res);

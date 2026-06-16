@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "check-webhook": "node scripts/check-webhook.js",
     "set-webhook": "tsx scripts/set-webhook.ts"
   },
   "devDependencies": {
