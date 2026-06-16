@@ -4,10 +4,12 @@ const {
   notifyAdminNewOrder,
   notifyCustomer,
   handleOrderCallback,
+  getUserOrders,
+  formatUserOrdersMessage,
 } = require("../lib/orders");
 
 const WELCOME_TEXT =
-  "🌲 Вітаємо в комплексі «Аж у небі»!\n\nНатисніть кнопку нижче, щоб відкрити наше меню та зробити замовлення:";
+  "✨ Вітаємо в комплексі «Аж у небі»!\n\nНатисніть кнопку нижче, щоб відкрити меню та зробити замовлення:";
 
 function isStartCommand(text) {
   const firstWord = text.trim().split(/\s+/)[0];
@@ -26,9 +28,15 @@ async function sendWelcomeMessage(chatId, webAppUrl) {
             web_app: { url: webAppUrl },
           },
         ],
+        [{ text: "📋 Мої замовлення", callback_data: "orders:list" }],
       ],
     },
   });
+}
+
+function isOrdersCommand(text) {
+  const firstWord = text.trim().split(/\s+/)[0];
+  return firstWord === "/orders" || firstWord.startsWith("/orders@");
 }
 
 async function handleOrder(req, res) {
@@ -37,7 +45,7 @@ async function handleOrder(req, res) {
   }
 
   try {
-    const { initData, cart, comment, locationNote } = req.body || {};
+    const { initData, cart, comment, locationNote, paymentMethod } = req.body || {};
     const user = validateInitData(initData);
 
     if (!user) {
@@ -49,6 +57,7 @@ async function handleOrder(req, res) {
       cartInput: cart,
       comment,
       locationNote,
+      paymentMethod,
     });
 
     await notifyAdminNewOrder(order);
@@ -69,6 +78,27 @@ async function handleOrder(req, res) {
 
 async function handleCallbackQuery(callbackQuery) {
   const data = callbackQuery.data || "";
+
+  if (data === "orders:list") {
+    try {
+      const orders = await getUserOrders(callbackQuery.from.id);
+      await sendMessage({
+        chat_id: callbackQuery.message?.chat?.id || callbackQuery.from.id,
+        text: formatUserOrdersMessage(orders),
+      });
+      await answerCallbackQuery({
+        callback_query_id: callbackQuery.id,
+      });
+    } catch (error) {
+      await answerCallbackQuery({
+        callback_query_id: callbackQuery.id,
+        text: "Не вдалося завантажити замовлення",
+        show_alert: true,
+      });
+    }
+    return;
+  }
+
   const [actionCode, orderId] = data.split(":");
 
   const actionMap = {
@@ -121,6 +151,15 @@ async function handleWebhook(req, res) {
       }
 
       await sendWelcomeMessage(update.message.chat.id, webAppUrl);
+      return res.status(200).send("OK");
+    }
+
+    if (typeof text === "string" && isOrdersCommand(text)) {
+      const orders = await getUserOrders(update.message.from.id);
+      await sendMessage({
+        chat_id: update.message.chat.id,
+        text: formatUserOrdersMessage(orders),
+      });
     }
   } catch (error) {
     // Повертаємо 200, щоб Telegram не спамив ретраями
