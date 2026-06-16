@@ -1,0 +1,14 @@
+{
+  "name": "azhunebi-bot",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "set-webhook": "tsx scripts/set-webhook.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@vercel/node": "^5",
+    "tsx": "^4",
+    "typescript": "^5"
+  }
+}
