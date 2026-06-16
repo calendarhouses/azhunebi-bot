@@ -10,5 +10,8 @@
     "@vercel/node": "^5",
     "tsx": "^4",
     "typescript": "^5"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.108.2"
   }
 }

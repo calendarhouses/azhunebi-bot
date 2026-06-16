@@ -3,6 +3,9 @@
   "functions": {
     "api/webhook.js": {
       "maxDuration": 10
+    },
+    "api/order.js": {
+      "maxDuration": 10
     }
   }
 }

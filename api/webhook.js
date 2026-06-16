@@ -1,3 +1,11 @@
+const { validateInitData, sendMessage, answerCallbackQuery } = require("../lib/telegram");
+const {
+  createOrder,
+  notifyAdminNewOrder,
+  notifyCustomer,
+  handleOrderCallback,
+} = require("../lib/orders");
+
 const WELCOME_TEXT =
   "🌲 Вітаємо в комплексі «Аж у небі»!\n\nНатисніть кнопку нижче, щоб відкрити наше меню та зробити замовлення:";
 
@@ -7,44 +15,104 @@ function isStartCommand(text) {
 }
 
 async function sendWelcomeMessage(chatId, webAppUrl) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) {
-    throw new Error("TELEGRAM_BOT_TOKEN is not set");
+  await sendMessage({
+    chat_id: chatId,
+    text: WELCOME_TEXT,
+    reply_markup: {
+      inline_keyboard: [
+        [
+          {
+            text: "🍽 Відкрити меню",
+            web_app: { url: webAppUrl },
+          },
+        ],
+      ],
+    },
+  });
+}
+
+async function handleOrder(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: WELCOME_TEXT,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "🍽 Відкрити меню",
-              web_app: { url: webAppUrl },
-            },
-          ],
-        ],
-      },
-    }),
-  });
+  try {
+    const { initData, cart, comment, locationNote } = req.body || {};
+    const user = validateInitData(initData);
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`sendMessage failed: ${body}`);
+    if (!user) {
+      return res.status(401).json({ ok: false, error: "Invalid initData" });
+    }
+
+    const order = await createOrder({
+      user,
+      cartInput: cart,
+      comment,
+      locationNote,
+    });
+
+    await notifyAdminNewOrder(order);
+
+    await notifyCustomer(
+      order,
+      `📩 Замовлення отримано!\n\nОчікуйте підтвердження від адміністратора.\nСума: ${order.total} ₴`
+    );
+
+    return res.status(200).json({ ok: true, orderId: order.id });
+  } catch (error) {
+    return res.status(400).json({
+      ok: false,
+      error: error instanceof Error ? error.message : "Order failed",
+    });
   }
 }
 
-module.exports = async (req, res) => {
+async function handleCallbackQuery(callbackQuery) {
+  const data = callbackQuery.data || "";
+  const [actionCode, orderId] = data.split(":");
+
+  const actionMap = {
+    c: "confirm",
+    x: "cancel",
+    r: "ready",
+  };
+
+  const action = actionMap[actionCode];
+
+  try {
+    if (!action || !orderId) {
+      throw new Error("Invalid callback");
+    }
+
+    await handleOrderCallback(action, orderId);
+
+    await answerCallbackQuery({
+      callback_query_id: callbackQuery.id,
+      text: "Оновлено",
+    });
+  } catch (error) {
+    await answerCallbackQuery({
+      callback_query_id: callbackQuery.id,
+      text: "Помилка обробки",
+      show_alert: true,
+    });
+  }
+}
+
+async function handleWebhook(req, res) {
   if (req.method !== "POST") {
     return res.status(200).send("OK");
   }
 
   try {
     const update = req.body;
-    const text = update && update.message && update.message.text;
+
+    if (update.callback_query) {
+      await handleCallbackQuery(update.callback_query);
+      return res.status(200).send("OK");
+    }
+
+    const text = update?.message?.text;
 
     if (typeof text === "string" && isStartCommand(text)) {
       const webAppUrl = process.env.WEB_APP_URL;
@@ -59,4 +127,21 @@ module.exports = async (req, res) => {
   }
 
   return res.status(200).send("OK");
+}
+
+function getRequestPath(req) {
+  return (req.url || "").split("?")[0];
+}
+
+module.exports = async (req, res) => {
+  const path = getRequestPath(req);
+
+  if (path === "/api/order" || path.endsWith("/order")) {
+    return handleOrder(req, res);
+  }
+
+  return handleWebhook(req, res);
 };
+
+module.exports.handleOrder = handleOrder;
+module.exports.handleWebhook = handleWebhook;

@@ -12,7 +12,7 @@ const response = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, 
   body: JSON.stringify({
     url: webhookUrl,
     drop_pending_updates: true,
-    allowed_updates: ["message"],
+    allowed_updates: ["message", "callback_query"],
   }),
 });
 
