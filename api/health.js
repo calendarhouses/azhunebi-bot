@@ -1,4 +1,4 @@
-const API_VERSION = "2026-06-16-v3";
+const API_VERSION = "2026-06-16-v4";
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", process.env.ALLOWED_ORIGIN || "https://calendarhouses.github.io");
