@@ -1,0 +1,23 @@
+name: Prepare scheduled orders
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger cron-prepare
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET is not configured in GitHub repository secrets."
+            exit 1
+          fi
+
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "https://azhunebi-bot.vercel.app/api/cron-prepare"

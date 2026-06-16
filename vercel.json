@@ -19,11 +19,5 @@
     "api/health.js": {
       "maxDuration": 5
     }
-  },
-  "crons": [
-    {
-      "path": "/api/cron-prepare",
-      "schedule": "*/5 * * * *"
-    }
-  ]
+  }
 }
