@@ -7,8 +7,20 @@
     "api/order.js": {
       "maxDuration": 10
     },
+    "api/orders.js": {
+      "maxDuration": 10
+    },
     "api/admin.js": {
       "maxDuration": 10
+    },
+    "api/cron-prepare.js": {
+      "maxDuration": 10
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron-prepare",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

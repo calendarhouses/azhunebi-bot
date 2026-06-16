@@ -2,7 +2,6 @@ const { validateInitData, sendMessage, answerCallbackQuery } = require("../lib/t
 const {
   createOrder,
   notifyAdminNewOrder,
-  notifyCustomer,
   handleOrderCallback,
   getUserOrders,
   formatUserOrdersMessage,
@@ -17,6 +16,9 @@ function isStartCommand(text) {
 }
 
 async function sendWelcomeMessage(chatId, webAppUrl) {
+  const normalizedUrl = webAppUrl.replace(/\/?$/, "/");
+  const ordersWebAppUrl = `${normalizedUrl}#orders`;
+
   await sendMessage({
     chat_id: chatId,
     text: WELCOME_TEXT,
@@ -28,7 +30,7 @@ async function sendWelcomeMessage(chatId, webAppUrl) {
             web_app: { url: webAppUrl },
           },
         ],
-        [{ text: "📋 Мої замовлення", callback_data: "orders:list" }],
+        [{ text: "📋 Мої замовлення", web_app: { url: ordersWebAppUrl } }],
       ],
     },
   });
@@ -45,7 +47,8 @@ async function handleOrder(req, res) {
   }
 
   try {
-    const { initData, cart, comment, locationNote, paymentMethod } = req.body || {};
+    const { initData, cart, comment, locationNote, paymentMethod, scheduledFor } =
+      req.body || {};
     const user = validateInitData(initData);
 
     if (!user) {
@@ -58,16 +61,16 @@ async function handleOrder(req, res) {
       comment,
       locationNote,
       paymentMethod,
+      scheduledFor,
     });
 
     await notifyAdminNewOrder(order);
 
-    await notifyCustomer(
-      order,
-      `📩 Замовлення отримано!\n\nОчікуйте підтвердження від адміністратора.\nСума: ${order.total} ₴`
-    );
-
-    return res.status(200).json({ ok: true, orderId: order.id });
+    return res.status(200).json({ ok: true, orderId: order.id, order: {
+      id: order.id,
+      status: order.status,
+      scheduledFor: order.scheduled_for,
+    }});
   } catch (error) {
     return res.status(400).json({
       ok: false,
@@ -103,6 +106,7 @@ async function handleCallbackQuery(callbackQuery) {
 
   const actionMap = {
     c: "confirm",
+    p: "prepare",
     x: "cancel",
     r: "ready",
   };
