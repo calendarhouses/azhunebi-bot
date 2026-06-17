@@ -72,16 +72,36 @@ async function handleCallbackQuery(callbackQuery) {
     return;
   }
 
-  const [actionCode, orderId] = data.split(":");
+  let action = null;
+  let orderId = null;
 
-  const actionMap = {
-    c: "confirm",
-    p: "prepare",
-    x: "cancel",
-    r: "ready",
+  const prefixActions = {
+    accept_: "confirm",
+    cancel_: "cancel",
+    prepare_: "prepare",
+    ready_: "ready",
   };
 
-  const action = actionMap[actionCode];
+  for (const [prefix, mappedAction] of Object.entries(prefixActions)) {
+    if (data.startsWith(prefix)) {
+      action = mappedAction;
+      orderId = data.slice(prefix.length);
+      break;
+    }
+  }
+
+  // Legacy short codes (c:, x:, p:, r:) — keep for older messages still in chat.
+  if (!action) {
+    const [actionCode, legacyId] = data.split(":");
+    const legacyMap = {
+      c: "confirm",
+      p: "prepare",
+      x: "cancel",
+      r: "ready",
+    };
+    action = legacyMap[actionCode];
+    orderId = legacyId;
+  }
 
   try {
     if (!action || !orderId) {
