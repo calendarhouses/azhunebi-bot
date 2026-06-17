@@ -122,6 +122,7 @@ async function handleCallbackQuery(callbackQuery) {
       text: "Оновлено",
     });
   } catch (error) {
+    console.error("[webhook] callback failed", { data, error });
     await answerCallbackQuery({
       callback_query_id: callbackQuery.id,
       text: "Помилка обробки",
@@ -195,14 +196,7 @@ module.exports = async (req, res) => {
     return handleOrderApi(req, res, path);
   }
 
-  try {
-    if (typeof req.body === "string") {
-      req.body = parseBody(req);
-    }
-  } catch {
-    // ignore
-  }
-
+  req.body = parseBody(req);
   return handleWebhook(req, res);
 };
 
