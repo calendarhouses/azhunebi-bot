@@ -13,6 +13,11 @@ const { sendHiSticker } = require("../lib/stickers");
 const WELCOME_TEXT =
   "✨ Вітаємо в комплексі «Аж у небі»!\n\nНатисніть кнопку нижче, щоб відкрити меню та зробити замовлення:";
 
+/** iOS Telegram may fire /start twice on startapp links — debounce per user. */
+const startRequests = new Map();
+
+const START_DEBOUNCE_MS = 2000;
+
 function isStartCommand(text) {
   const firstWord = text.trim().split(/\s+/)[0];
   return firstWord === "/start" || firstWord.startsWith("/start@");
@@ -148,6 +153,18 @@ async function handleWebhook(req, res) {
     const webAppUrl = process.env.WEB_APP_URL;
 
     if (typeof text === "string" && isStartCommand(text)) {
+      const userId = update.message.from?.id;
+      if (userId) {
+        const now = Date.now();
+        const lastRequest = startRequests.get(userId) || 0;
+
+        if (now - lastRequest < START_DEBOUNCE_MS) {
+          return res.status(200).send("OK");
+        }
+
+        startRequests.set(userId, now);
+      }
+
       if (!webAppUrl) {
         throw new Error("WEB_APP_URL is not set");
       }
