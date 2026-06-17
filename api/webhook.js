@@ -1,7 +1,6 @@
 const {
   validateInitData,
   sendMessage,
-  sendLottieSticker,
   answerCallbackQuery,
 } = require("../lib/telegram");
 const { handleOrderApi, parseBody } = require("../lib/order-api");
@@ -9,11 +8,10 @@ const {
   handleOrderCallback,
   getUserOrders,
 } = require("../lib/orders");
-const loveSticker = require("../lib/love.json");
+const { sendHiSticker } = require("../lib/stickers");
 
-const WELCOME_INTRO = "✨ Вітаємо в комплексі «Аж у небі»!";
-const WELCOME_PROMPT =
-  "Натисніть кнопку нижче, щоб відкрити меню та зробити замовлення:";
+const WELCOME_TEXT =
+  "✨ Вітаємо в комплексі «Аж у небі»!\n\nНатисніть кнопку нижче, щоб відкрити меню та зробити замовлення:";
 
 function isStartCommand(text) {
   const firstWord = text.trim().split(/\s+/)[0];
@@ -21,17 +19,15 @@ function isStartCommand(text) {
 }
 
 async function sendWelcomeMessage(chatId, webAppUrl) {
-  await sendMessage({ chat_id: chatId, text: WELCOME_INTRO });
-
   try {
-    await sendLottieSticker({ chat_id: chatId, lottie: loveSticker });
+    await sendHiSticker(chatId);
   } catch (error) {
     console.error("[welcome] sticker failed", error);
   }
 
   await sendMessage({
     chat_id: chatId,
-    text: WELCOME_PROMPT,
+    text: WELCOME_TEXT,
     reply_markup: {
       inline_keyboard: [
         [
