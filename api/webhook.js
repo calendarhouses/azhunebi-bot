@@ -120,11 +120,22 @@ async function handleCallbackQuery(callbackQuery) {
       throw new Error("Invalid callback");
     }
 
-    await handleOrderCallback(action, orderId);
+    const messageContext = callbackQuery.message
+      ? {
+          chatId: callbackQuery.message.chat.id,
+          messageId: callbackQuery.message.message_id,
+        }
+      : null;
+
+    const result = await handleOrderCallback(action, orderId, messageContext);
+
+    if (!result.messageRefreshed) {
+      throw new Error("Failed to refresh admin message");
+    }
 
     await answerCallbackQuery({
       callback_query_id: callbackQuery.id,
-      text: "Оновлено",
+      text: result.statusChanged ? "Оновлено" : "Замовлення вже оброблено",
     });
   } catch (error) {
     console.error("[webhook] callback failed", { data, error });
