@@ -1,5 +1,4 @@
 const {
-  validateInitData,
   sendMessage,
   answerCallbackQuery,
 } = require("../lib/telegram");
@@ -9,6 +8,7 @@ const {
   getUserOrders,
 } = require("../lib/orders");
 const { sendHiSticker } = require("../lib/stickers");
+const { ensureBotWebhook } = require("../lib/telegram-webhook");
 
 const WELCOME_TEXT =
   "✨ Вітаємо в комплексі «Аж у небі»!\n\nНатисніть кнопку нижче, щоб відкрити меню та зробити замовлення:";
@@ -68,6 +68,25 @@ async function sendOrdersWebAppButton(chatId, webAppUrl) {
 
 async function handleCallbackQuery(callbackQuery) {
   const data = callbackQuery.data || "";
+  let answered = false;
+
+  async function answer(payload = {}) {
+    if (answered) {
+      return;
+    }
+    answered = true;
+    await answerCallbackQuery({
+      callback_query_id: callbackQuery.id,
+      ...payload,
+    });
+  }
+
+  // Stop Telegram spinner immediately — processing can take longer.
+  try {
+    await answer();
+  } catch (error) {
+    console.error("[webhook] early answerCallbackQuery failed", error);
+  }
 
   if (data === "orders:list") {
     const webAppUrl = process.env.WEB_APP_URL;
@@ -77,10 +96,6 @@ async function handleCallbackQuery(callbackQuery) {
         webAppUrl
       );
     }
-
-    await answerCallbackQuery({
-      callback_query_id: callbackQuery.id,
-    });
     return;
   }
 
@@ -130,7 +145,6 @@ async function handleCallbackQuery(callbackQuery) {
     const result = await handleOrderCallback(action, orderId, messageContext);
 
     if (!result.messageRefreshed) {
-      // Status may already be updated; don't fail the whole tap for UI refresh.
       console.warn("[webhook] admin message refresh skipped/failed", {
         data,
         statusChanged: result.statusChanged,
@@ -138,9 +152,10 @@ async function handleCallbackQuery(callbackQuery) {
       });
     }
 
-    await answerCallbackQuery({
-      callback_query_id: callbackQuery.id,
-      text: result.statusChanged ? "Оновлено" : "Замовлення вже оброблено",
+    console.log("[webhook] callback ok", {
+      data,
+      statusChanged: result.statusChanged,
+      messageRefreshed: result.messageRefreshed,
     });
   } catch (error) {
     console.error("[webhook] callback failed", {
@@ -149,8 +164,7 @@ async function handleCallbackQuery(callbackQuery) {
       error,
     });
     try {
-      await answerCallbackQuery({
-        callback_query_id: callbackQuery.id,
+      await answer({
         text: "Помилка обробки",
         show_alert: true,
       });
@@ -166,9 +180,18 @@ async function handleWebhook(req, res) {
   }
 
   try {
+    // Heal broken Telegram webhook after Vercel outages / plan limits.
+    ensureBotWebhook().catch((error) => {
+      console.error("[webhook] ensureBotWebhook failed", error);
+    });
+
     const update = req.body;
 
     if (update.callback_query) {
+      console.log("[webhook] callback_query", {
+        data: update.callback_query.data || null,
+        from: update.callback_query.from?.id || null,
+      });
       await handleCallbackQuery(update.callback_query);
       return res.status(200).send("OK");
     }
@@ -212,6 +235,7 @@ async function handleWebhook(req, res) {
       }
     }
   } catch (error) {
+    console.error("[webhook] handleWebhook failed", error);
     // Повертаємо 200, щоб Telegram не спамив ретраями
   }
 
