@@ -130,7 +130,12 @@ async function handleCallbackQuery(callbackQuery) {
     const result = await handleOrderCallback(action, orderId, messageContext);
 
     if (!result.messageRefreshed) {
-      throw new Error("Failed to refresh admin message");
+      // Status may already be updated; don't fail the whole tap for UI refresh.
+      console.warn("[webhook] admin message refresh skipped/failed", {
+        data,
+        statusChanged: result.statusChanged,
+        orderId: result.order?.id,
+      });
     }
 
     await answerCallbackQuery({
@@ -138,12 +143,20 @@ async function handleCallbackQuery(callbackQuery) {
       text: result.statusChanged ? "Оновлено" : "Замовлення вже оброблено",
     });
   } catch (error) {
-    console.error("[webhook] callback failed", { data, error });
-    await answerCallbackQuery({
-      callback_query_id: callbackQuery.id,
-      text: "Помилка обробки",
-      show_alert: true,
+    console.error("[webhook] callback failed", {
+      data,
+      message: error?.message || String(error),
+      error,
     });
+    try {
+      await answerCallbackQuery({
+        callback_query_id: callbackQuery.id,
+        text: "Помилка обробки",
+        show_alert: true,
+      });
+    } catch (answerError) {
+      console.error("[webhook] answerCallbackQuery failed", answerError);
+    }
   }
 }
 
