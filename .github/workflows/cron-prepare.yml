@@ -2,7 +2,8 @@ name: Prepare scheduled orders
 
 on:
   schedule:
-    - cron: "*/2 * * * *"
+    # Every 5 min is enough for scheduled kitchen prep; cuts Vercel invocations ~2.5x
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -20,4 +21,4 @@ jobs:
 
           curl -sf -X POST \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            "https://azhunebi-bot.vercel.app/api/cron-prepare"
+            "https://azhunebi-bot-six.vercel.app/api/cron-prepare"
