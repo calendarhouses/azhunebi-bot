@@ -242,13 +242,26 @@ async function handleWebhook(req, res) {
           await grantAccessFromStartPayload(userId, startPayload);
         } catch (error) {
           console.error("[webhook] grant access from /start failed", error);
-          await sendMessage({
-            chat_id: update.message.chat.id,
-            text:
-              "Не вдалося відкрити доступ по QR. Спробуйте відсканувати код ще раз або зверніться до адміністрації.",
-          });
-          return res.status(200).send("OK");
+          // Mini App often already granted via claimAccess before this /start.
+          // Do not send a scary error — still try to deliver the menu button.
         }
+
+        let alreadyAllowed = false;
+        try {
+          const { userCanOrder } = require("../lib/guest-access");
+          alreadyAllowed = (await userCanOrder(from)).allowed;
+        } catch (error) {
+          console.error("[webhook] post-grant access check failed", error);
+        }
+
+        if (!alreadyAllowed) {
+          try {
+            await grantAccessFromStartPayload(userId, startPayload);
+          } catch (error) {
+            console.error("[webhook] grant access retry failed", error);
+          }
+        }
+
         await sendWelcomeMessage(update.message.chat.id);
         return res.status(200).send("OK");
       }
