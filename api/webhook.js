@@ -111,14 +111,14 @@ async function handleCallbackQuery(callbackQuery) {
   let action = null;
   let orderId = null;
 
-  const prefixActions = {
-    accept_: "confirm",
-    cancel_: "cancel",
-    prepare_: "prepare",
-    ready_: "ready",
-  };
+  const prefixActions = [
+    ["prepare_", "prepare"],
+    ["accept_", "confirm"],
+    ["cancel_", "cancel"],
+    ["ready_", "ready"],
+  ];
 
-  for (const [prefix, mappedAction] of Object.entries(prefixActions)) {
+  for (const [prefix, mappedAction] of prefixActions) {
     if (data.startsWith(prefix)) {
       action = mappedAction;
       orderId = data.slice(prefix.length);
