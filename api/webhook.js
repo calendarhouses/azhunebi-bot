@@ -7,17 +7,14 @@ const {
   handleOrderCallback,
   getUserOrders,
 } = require("../lib/orders");
-const { sendHiSticker } = require("../lib/stickers");
 const { ensureBotWebhook } = require("../lib/telegram-webhook");
 const {
   parseAccessStartParam,
   grantAccessFromStartPayload,
 } = require("../lib/guest-access");
+const { sendGuestMenuWelcome } = require("../lib/guest-welcome");
 const { isTelegramAdmin, isOwnerUser } = require("../lib/admins");
 const { isTelegramUserBlocked } = require("../lib/blocked");
-
-const WELCOME_TEXT =
-  "✨ Вітаємо в комплексі «Аж у небі»!\n\nНатисніть кнопку нижче, щоб відкрити меню та зробити замовлення:";
 
 const QR_ONLY_TEXT =
   "🔒 Меню доступне лише через QR-код у будиночку або за столиком.\n\nВідскануйте QR у комплексі «Аж у небі», щоб зробити замовлення.";
@@ -40,27 +37,8 @@ function getStartPayload(text) {
   return parts.length > 1 ? parts[1] : null;
 }
 
-async function sendWelcomeMessage(chatId, webAppUrl) {
-  try {
-    await sendHiSticker(chatId);
-  } catch (error) {
-    console.error("[welcome] sticker failed", error);
-  }
-
-  await sendMessage({
-    chat_id: chatId,
-    text: WELCOME_TEXT,
-    reply_markup: {
-      inline_keyboard: [
-        [
-          {
-            text: "🍽 Відкрити меню",
-            web_app: { url: webAppUrl },
-          },
-        ],
-      ],
-    },
-  });
+async function sendWelcomeMessage(chatId) {
+  await sendGuestMenuWelcome(chatId, { withSticker: true });
 }
 
 async function sendQrOnlyMessage(chatId) {
@@ -265,12 +243,12 @@ async function handleWebhook(req, res) {
         } catch (error) {
           console.error("[webhook] grant access from /start failed", error);
         }
-        await sendWelcomeMessage(update.message.chat.id, webAppUrl);
+        await sendWelcomeMessage(update.message.chat.id);
         return res.status(200).send("OK");
       }
 
       if (isAdmin) {
-        await sendWelcomeMessage(update.message.chat.id, webAppUrl);
+        await sendWelcomeMessage(update.message.chat.id);
         return res.status(200).send("OK");
       }
 
@@ -280,7 +258,7 @@ async function handleWebhook(req, res) {
           const { restoreAccessFromActiveBinding } = require("../lib/guest-access");
           const restored = await restoreAccessFromActiveBinding(userId);
           if (restored?.access) {
-            await sendWelcomeMessage(update.message.chat.id, webAppUrl);
+            await sendWelcomeMessage(update.message.chat.id);
             return res.status(200).send("OK");
           }
         } catch (error) {
