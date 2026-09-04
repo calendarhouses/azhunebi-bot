@@ -9,9 +9,21 @@ const {
 } = require("../lib/orders");
 const { sendHiSticker } = require("../lib/stickers");
 const { ensureBotWebhook } = require("../lib/telegram-webhook");
+const {
+  parseAccessStartParam,
+  grantAccessFromStartPayload,
+} = require("../lib/guest-access");
+const { isTelegramAdmin, isOwnerUser } = require("../lib/admins");
+const { isTelegramUserBlocked } = require("../lib/blocked");
 
 const WELCOME_TEXT =
   "✨ Вітаємо в комплексі «Аж у небі»!\n\nНатисніть кнопку нижче, щоб відкрити меню та зробити замовлення:";
+
+const QR_ONLY_TEXT =
+  "🔒 Меню доступне лише через QR-код у будиночку або за столиком.\n\nВідскануйте QR у комплексі «Аж у небі», щоб зробити замовлення.";
+
+const BLOCKED_TEXT =
+  "⛔ Доступ до бота для вашого акаунта обмежено. Якщо це помилка — зверніться до адміністрації комплексу.";
 
 /** iOS Telegram may fire /start twice on startapp links — debounce per user. */
 const startRequests = new Map();
@@ -21,6 +33,11 @@ const START_DEBOUNCE_MS = 2000;
 function isStartCommand(text) {
   const firstWord = text.trim().split(/\s+/)[0];
   return firstWord === "/start" || firstWord.startsWith("/start@");
+}
+
+function getStartPayload(text) {
+  const parts = text.trim().split(/\s+/);
+  return parts.length > 1 ? parts[1] : null;
 }
 
 async function sendWelcomeMessage(chatId, webAppUrl) {
@@ -43,6 +60,20 @@ async function sendWelcomeMessage(chatId, webAppUrl) {
         ],
       ],
     },
+  });
+}
+
+async function sendQrOnlyMessage(chatId) {
+  await sendMessage({
+    chat_id: chatId,
+    text: QR_ONLY_TEXT,
+  });
+}
+
+async function sendBlockedMessage(chatId) {
+  await sendMessage({
+    chat_id: chatId,
+    text: BLOCKED_TEXT,
   });
 }
 
@@ -216,20 +247,66 @@ async function handleWebhook(req, res) {
         throw new Error("WEB_APP_URL is not set");
       }
 
-      await sendWelcomeMessage(update.message.chat.id, webAppUrl);
+      const from = update.message.from || {};
+
+      if (await isTelegramUserBlocked(from)) {
+        await sendBlockedMessage(update.message.chat.id);
+        return res.status(200).send("OK");
+      }
+
+      const startPayload = getStartPayload(text);
+      const parsedQr = parseAccessStartParam(startPayload);
+      const isAdmin =
+        (await isTelegramAdmin(from)) || isOwnerUser(from);
+
+      if (parsedQr && userId) {
+        try {
+          await grantAccessFromStartPayload(userId, startPayload);
+        } catch (error) {
+          console.error("[webhook] grant access from /start failed", error);
+        }
+        await sendWelcomeMessage(update.message.chat.id, webAppUrl);
+        return res.status(200).send("OK");
+      }
+
+      if (isAdmin) {
+        await sendWelcomeMessage(update.message.chat.id, webAppUrl);
+        return res.status(200).send("OK");
+      }
+
+      await sendQrOnlyMessage(update.message.chat.id);
       return res.status(200).send("OK");
     }
 
     if (typeof text === "string" && isOrdersCommand(text)) {
+      const from = update.message.from || {};
+
+      if (await isTelegramUserBlocked(from)) {
+        await sendBlockedMessage(update.message.chat.id);
+        return res.status(200).send("OK");
+      }
+
+      const isAdmin =
+        (await isTelegramAdmin(from)) || isOwnerUser(from);
+
+      if (!isAdmin) {
+        const { getGuestMenuAccess } = require("../lib/guest-access");
+        const access = from.id ? await getGuestMenuAccess(from.id) : null;
+        if (!access) {
+          await sendQrOnlyMessage(update.message.chat.id);
+          return res.status(200).send("OK");
+        }
+      }
+
       if (webAppUrl) {
         await sendOrdersWebAppButton(update.message.chat.id, webAppUrl);
       } else {
-        const orders = await getUserOrders(update.message.from.id);
+        const orders = await getUserOrders(from.id);
         await sendMessage({
           chat_id: update.message.chat.id,
           text:
             orders.length > 0
-              ? "📋 Є активні замовлення. Відкрийте меню через /start."
+              ? "📋 Є активні замовлення. Відкрийте меню через QR-код."
               : "📋 Активних замовлень немає.",
         });
       }
