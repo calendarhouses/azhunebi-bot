@@ -1,56 +1,48 @@
-const API_VERSION = "2026-07-15-webhook-repair";
 const { ensureBotWebhook, getWebhookInfo, resolveWebhookUrl } = require("../lib/telegram-webhook");
 
+const API_VERSION = "2026-09-04-webhook-fix";
+
 module.exports = async (req, res) => {
-  res.setHeader(
-    "Access-Control-Allow-Origin",
-    process.env.ALLOWED_ORIGIN || "https://calendarhouses.github.io"
-  );
-  res.setHeader("X-Azhunebi-Version", API_VERSION);
+  const force =
+    req.method === "POST" ||
+    req.query?.repair === "1" ||
+    req.query?.force === "1";
 
-  const query = req.query || {};
-  const repair = query.repair === "1" || query.action === "setWebhook";
-
+  let webhook = null;
   try {
-    if (repair) {
-      const result = await ensureBotWebhook({ force: true });
-      return res.status(200).json({
-        ok: true,
-        service: "azhunebi-bot",
-        version: API_VERSION,
-        repair: result,
-      });
-    }
-
-    if (query.webhook === "1") {
+    if (force) {
+      webhook = await ensureBotWebhook({ force: true });
+    } else {
       const info = await getWebhookInfo();
-      return res.status(200).json({
+      const expectedUrl = resolveWebhookUrl();
+      const currentUrl = (info?.url || "").replace(/\/$/, "");
+      webhook = {
         ok: true,
-        service: "azhunebi-bot",
-        version: API_VERSION,
-        expectedUrl: resolveWebhookUrl(),
-        webhook: {
-          url: info.url || null,
-          pendingUpdateCount: info.pending_update_count ?? 0,
-          lastErrorDate: info.last_error_date || null,
-          lastErrorMessage: info.last_error_message || null,
-          maxConnections: info.max_connections ?? null,
-          allowedUpdates: info.allowed_updates || null,
-        },
-      });
+        updated: false,
+        expectedUrl,
+        currentUrl,
+        matches: currentUrl === expectedUrl,
+        pending: info?.pending_update_count ?? null,
+        lastError: info?.last_error_message || null,
+      };
+
+      if (!webhook.matches || webhook.lastError) {
+        webhook = await ensureBotWebhook({ force: true });
+      }
     }
   } catch (error) {
-    return res.status(500).json({
+    webhook = {
       ok: false,
-      service: "azhunebi-bot",
-      version: API_VERSION,
-      error: error?.message || String(error),
-    });
+      error: error instanceof Error ? error.message : String(error),
+      expectedUrl: resolveWebhookUrl(),
+    };
   }
 
+  res.setHeader("Cache-Control", "no-store");
   return res.status(200).json({
     ok: true,
     service: "azhunebi-bot",
     version: API_VERSION,
+    webhook,
   });
 };
