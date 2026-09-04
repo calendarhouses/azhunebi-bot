@@ -274,6 +274,20 @@ async function handleWebhook(req, res) {
         return res.status(200).send("OK");
       }
 
+      // Guest already on an open house bill — keep access without new QR.
+      if (userId) {
+        try {
+          const { restoreAccessFromActiveBinding } = require("../lib/guest-access");
+          const restored = await restoreAccessFromActiveBinding(userId);
+          if (restored?.access) {
+            await sendWelcomeMessage(update.message.chat.id, webAppUrl);
+            return res.status(200).send("OK");
+          }
+        } catch (error) {
+          console.error("[webhook] restore active house access failed", error);
+        }
+      }
+
       await sendQrOnlyMessage(update.message.chat.id);
       return res.status(200).send("OK");
     }
