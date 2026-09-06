@@ -1,6 +1,7 @@
 const { ensureBotWebhook, getWebhookInfo, resolveWebhookUrl } = require("../lib/telegram-webhook");
+const { ensureDefaultWebAppMenuButton } = require("../lib/guest-welcome");
 
-const API_VERSION = "2026-09-04-webhook-fix";
+const API_VERSION = "2026-09-06-menu-button";
 
 module.exports = async (req, res) => {
   const force =
@@ -38,11 +39,22 @@ module.exports = async (req, res) => {
     };
   }
 
+  let menuButton = null;
+  try {
+    menuButton = await ensureDefaultWebAppMenuButton({ force });
+  } catch (error) {
+    menuButton = {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
   res.setHeader("Cache-Control", "no-store");
   return res.status(200).json({
     ok: true,
     service: "azhunebi-bot",
     version: API_VERSION,
     webhook,
+    menuButton,
   });
 };
